@@ -105,7 +105,7 @@ void clear_scrn(void){
 // Outputs divider
 void write_divider(void){
 	// makes cursor invisible
-	usart_esc("[?25l");
+	usart_esc("[?25h");
 	usart_esc("[1m");
 
 	// prints top border
@@ -117,7 +117,7 @@ void write_divider(void){
 	usart_esc("[43;0H");
 	for(int i = 0; i < NUMCOLS; i++) { usart_print("="); }
 
-	// prints left divider
+	// prints right divider
 	usart_esc("[2;87H");
 	for(int i = 0; i <= NUMROWS - 2; i++){
 		usart_print("|");
@@ -127,6 +127,7 @@ void write_divider(void){
 
 
 	// prints right border
+	// could not print due to a bug that I couldn't fix
 //	usart_esc("[2;87H");
 //	for(int i = 0; i <= NUMROWS - 2; i++){
 //		usart_print("|");
@@ -146,6 +147,7 @@ void write_divider(void){
 void plot_point(uint16_t r, int16_t theta){
 	char * str_point = malloc(10);
 
+	// sets cos and sin values in a table to vastly improve calculation times
 	float cos_val[] = {
 		    1, 0.9998, 0.9994, 0.9986, 0.9976, 0.9962, 0.9945, 0.9925,
 		    0.9903, 0.9877, 0.9848, 0.9816, 0.9781, 0.9744, 0.9703, 0.9659,
@@ -197,15 +199,12 @@ void plot_point(uint16_t r, int16_t theta){
 	        0.1908, 0.1736, 0.1564, 0.1392, 0.1219, 0.1045, 0.0872, 0.0698,
 	        0.0523, 0.0349, 0.0175, 0 };
 
-	uint8_t x = round(r * cos_val[theta+90])  + (NUMCOLS>>1);
-	// gets the y coordinate by converting r and theta into rectangle, and shifting over by
+	// gets the x coordinate by converting r and theta into rectangle, and shifting over by
 	// the number of columns/2 to adjust for USART cursor coordinates
+	uint8_t x = round(r * cos_val[theta+90])  + (NUMCOLS>>1);
+
+	// gets the y cordinate by converting r and theta into rectangular
 	uint8_t y = NUMROWS - round(r * sin_val[theta+90]);
-
-
-//	usart_esc(str_point);
-
-//	// clears column
 
 
 	// plots point

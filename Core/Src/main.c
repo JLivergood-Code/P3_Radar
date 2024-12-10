@@ -27,6 +27,9 @@
 #define MSEC_OFFSET 120000
 #define MSEC_CNT 80000
 #define MAX_ANGLE 90
+#define MAX_DISTANCE 41
+
+#define ITER_VAL 9600000
 
 void servo_degrees(int8_t degrees);
 void SystemClock_Config(void);
@@ -70,22 +73,26 @@ int main(void)
 
   while (1)
   {
-	  if(ultra_flag){;
+	  // once a reading from the ultrasonic sensor comes in,
+	  // plots the points on the terminal
+	  if(ultra_flag){
+		  // clears flag
 		  ultra_flag = 0;
-		  width = width/2320;
+		  // divides width into a usable value to be used in the terminal
+		  width = width/8000;
 		  if(servo_pos == MAX_ANGLE) {
-
+			  // if the servo angle is at aximum, resets the screen
 			  clear_scrn();
 			  write_divider();
 
 		  }
 
+		  // sets max distance
+		  if(width > MAX_DISTANCE) { width = 43; }
+		  // plots point
 		  plot_point(width, servo_pos);
 	  }
-//	  delay_us(2000);
 
-
-//	  delay_us(200);
   }
 
 }
@@ -93,18 +100,23 @@ int main(void)
 void servo_degrees(int8_t degrees){
 	// calculates PWN count
 	PWM_VAL = ((MSEC_CNT * degrees) / 90) + MSEC_OFFSET;
+	// sets servo CC to calculated PWM Value
 	TIM4->CCR1 = PWM_VAL;
 
 }
 
 void TIM2_IRQHandler(void){
 	// Activates every 60 ms
-	if(TIM2->SR & TIM_SR_UIF){
+	if(TIM2->SR & TIM_SR_CC3IF){
 		ultrasonic_trig();
-		TIM2->CCR1 = (TIM2->ARR)>>1;
+		// calculates next cc3/4 values
+		TIM2->CCR3 += ITER_VAL;
+		TIM2->CCR4 += ITER_VAL / 2;
 
+		// calculates next angle
 		servo_pos += servo_mod;
 
+		// changes the angle modifier if angle is at 90 or -90
 		if(servo_pos == MAX_ANGLE){
 			servo_mod = -1;
 		}
@@ -112,15 +124,50 @@ void TIM2_IRQHandler(void){
 			servo_mod = 1;
 		}
 
+		// sets PWM for servo
 		servo_degrees(servo_pos);
 //
-
+		TIM2->SR &= ~(TIM_SR_CC3IF);
 		// clears UIF interrupt
-		TIM2->SR &= ~(TIM_SR_UIF);
+//		TIM2->SR &= ~(TIM_SR_UIF);
 	}
-	if(TIM2->SR & TIM_SR_CC1IF){
+	if(TIM2->SR & TIM_SR_CC4IF){
 		ultrasonic_trig();
+		TIM2->SR &= ~(TIM_SR_CC4IF);
+	}
+
+	//The TIMx_CCR1 register gets the value of the counter on the active transition.
+	//rising edge detected of ultrasonic Pulse
+	if(TIM2->SR & TIM_SR_CC1IF){ //check flag for capture \ compare
+	  //clear flag
+
+		pos_edge = TIM2->CCR1;  // Read the current captured value
+
 		TIM2->SR &= ~(TIM_SR_CC1IF);
+	}
+	// captures falling edge of Ultrasonic Pulse
+	if(TIM2->SR & TIM_SR_CC2IF){
+		neg_edge = TIM2->CCR2;
+
+		if(pos_edge && neg_edge){
+			if(neg_edge >= pos_edge){
+				// if the current value is greater than the previous, the period is the difference between them
+				width = neg_edge - pos_edge;
+
+				// sets flag
+				ultra_flag = 1;
+			}
+//			else{
+//				//if the current time is not greater than the previous time, we have either time-traveled or the timer has overflowed
+//				 width = (-1 - pos_edge) + neg_edge;
+//			}
+
+			// clears variables
+			pos_edge = 0;  // Update prevTime for next period measurement
+			neg_edge = 0;
+		}
+
+		TIM2->SR &= ~(TIM_SR_CC2IF);
 	}
 }
 
@@ -143,40 +190,9 @@ void TIM5_IRQHandler(void) {
 	}
 }
 
-void TIM3_IRQHandler(void) {
-	//The TIMx_CCR1 register gets the value of the counter on the active transition.
-	//rising edge detected
-	// CC1OF is also set if at least two consecutive captures occurred whereas the flag was not cleared
-	if(TIM3->SR & TIM_SR_CC1IF){ //check flag for capture \ compare
-	  //clear flag
-
-		pos_edge = TIM3->CCR1;  // Read the current captured value
-
-		TIM3->SR &= ~(TIM_SR_CC1IF);
-	}
-	if(TIM3->SR & TIM_SR_CC2IF){
-		neg_edge = TIM3->CCR2;
-
-		if(pos_edge && neg_edge){
-			if(neg_edge >= pos_edge){
-				// if the current value is greater than the previous, the period is the difference between them
-				width = neg_edge - pos_edge;
-
-				ultra_flag = 1;
-			}
-			else{
-				//if the current time is not greater than the previous time, we have either time-traveled or the timer has overflowed
-				 width = (-1 - pos_edge) + neg_edge;
-			}
-
-
-			pos_edge = 0;  // Update prevTime for next period measurement
-			neg_edge = 0;
-		}
-
-		TIM3->SR &= ~(TIM_SR_CC2IF);
-	}
-}
+//void TIM3_IRQHandler(void) {
+//
+//}
 
 /* Configure SysTick Timer for use with delay_us function. This will break
  * break compatibility with HAL_delay() by disabling interrupts to allow for
